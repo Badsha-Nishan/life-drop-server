@@ -118,7 +118,17 @@ async function run() {
       }
     });
 
-    // Get Donation-request Data
+    // ALL Donation Request
+    app.get("/api/donation-request", async (req, res) => {
+      try {
+        const request = await donationRequestCollection.find().toArray();
+        res.send(request);
+      } catch (err) {
+        res.status(500).send({ message: "Error fetching Donation Request" });
+      }
+    });
+
+    // Get Donation-request Data by email
     app.get("/api/donation-request/:email", async (req, res) => {
       try {
         const email = req.params.email;
@@ -136,7 +146,7 @@ async function run() {
     });
 
     // Donation Request Update
-    app.patch("/api/donation-request/:id", async (req, res) => {
+    app.patch("/api/donation-request/id/:id", async (req, res) => {
       try {
         const id = req.params.id;
         const updatedData = req.body;
@@ -174,6 +184,30 @@ async function run() {
         res.status(500).send({
           success: false,
           message: error.message,
+        });
+      }
+    });
+
+    // Get Single Donation Request by ID
+    app.get("/api/donation-request/id/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const query = { _id: new ObjectId(id) };
+        const result = await donationRequestCollection.findOne(query);
+        console.log("this result:", result);
+
+        if (!result) {
+          return res.status(404).send({
+            success: false,
+            message: "Donation request not found.",
+          });
+        }
+        res.send(result);
+      } catch (error) {
+        console.error("Error fetching single request:", error);
+        res.status(500).send({
+          success: false,
+          message: "Internal server error: " + error.message,
         });
       }
     });
