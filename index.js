@@ -51,15 +51,51 @@ async function run() {
       }
     });
 
-    // Logged User Email
+    // SINGLE USER BY EMAIL
     app.get("/api/users/:email", async (req, res) => {
-      const email = req.params.email;
+      try {
+        const email = req.params.email;
 
-      const result = await usersCollection.findOne({
-        email,
-      });
+        const user = await usersCollection.findOne({ email });
+
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
+
+        res.send(user);
+      } catch (err) {
+        res.status(500).send({ message: "Error fetching user" });
+      }
+    });
+
+    // Profile Update
+    app.patch("/api/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const updatedData = req.body;
+
+      const filter = { email };
+
+      const updateDoc = {
+        $set: {
+          name: updatedData.name,
+          district: updatedData.district,
+          upazila: updatedData.upazila,
+        },
+      };
+
+      const result = await usersCollection.updateOne(filter, updateDoc);
 
       res.send(result);
+    });
+
+    // ALL USERS
+    app.get("/api/users", async (req, res) => {
+      try {
+        const users = await usersCollection.find().toArray();
+        res.send(users);
+      } catch (err) {
+        res.status(500).send({ message: "Error fetching users" });
+      }
     });
 
     // Send a ping to confirm a successful connection
