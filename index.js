@@ -212,8 +212,37 @@ async function run() {
       }
     });
 
+    // ─── ADMIN STATS API ───
+    app.get("/api/admin/stats", async (req, res) => {
+      try {
+        // ১. টোটাল ডোনার সংখ্যা কাউন্ট (যাদের রোল donor অথবা সব ইউজারকে কাউন্ট করতে পারেন)
+        const totalDonors = await usersCollection.countDocuments({
+          role: "donor",
+        });
+        // যদি রোল না থাকে, সব ইউজার গুনতে চাইলে: await usersCollection.countDocuments({});
+
+        // ২. টোটাল ব্লাড রিকোয়েস্ট সংখ্যা কাউন্ট
+        const bloodRequests = await donationRequestCollection.countDocuments(
+          {}
+        );
+
+        // ৩. টোটাল ফান্ডিং (আপাতত হার্ডকোডেড রাখতে পারেন যদি ফান্ডিং কালেকশন না থাকে)
+        // যদি কালেকশন থাকে: const fundingData = await fundingCollection.aggregate([...])
+        const totalFunding = 12886;
+
+        res.send({
+          totalDonors,
+          totalFunding,
+          bloodRequests,
+        });
+      } catch (err) {
+        console.error("Error fetching admin stats:", err);
+        res.status(500).send({ message: "Server error fetching stats" });
+      }
+    });
+
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
+    // await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
     );
