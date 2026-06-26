@@ -31,6 +31,7 @@ async function run() {
 
     const database = client.db("lifedrop");
     const usersCollection = database.collection("users");
+    const donationRequestCollection = database.collection("donation-request");
 
     // Create Users Data
     app.post("/api/users", async (req, res) => {
@@ -95,6 +96,25 @@ async function run() {
         res.send(users);
       } catch (err) {
         res.status(500).send({ message: "Error fetching users" });
+      }
+    });
+
+    // Create Donation-Request Data
+    app.post("/api/donation-request", async (req, res) => {
+      try {
+        const requestData = req.body;
+
+        console.log("Received:", requestData);
+
+        const result = await donationRequestCollection.insertOne(requestData);
+
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
       }
     });
 
