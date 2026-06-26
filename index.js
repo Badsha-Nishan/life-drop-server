@@ -7,7 +7,7 @@ require("dotenv").config();
 app.use(cors());
 app.use(express.json());
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 app.get("/", (req, res) => {
   res.send("Hello World!");
@@ -109,6 +109,66 @@ async function run() {
         const result = await donationRequestCollection.insertOne(requestData);
 
         res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({
+          success: false,
+          message: error.message,
+        });
+      }
+    });
+
+    // Get Donation-request Data
+    app.get("/api/donation-request/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
+
+        // ডাটাবেজের 'requesterEmail' ফিল্ডের সাথে ম্যাচ করানো হলো
+        const requests = await donationRequestCollection
+          .find({ requesterEmail: email })
+          .toArray();
+
+        res.send(requests);
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Error fetching requests" });
+      }
+    });
+
+    // Donation Request Update
+    app.patch("/api/donation-request/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedData = req.body;
+
+        // অত্যন্ত গুরুত্বপূর্ণ: বডি থেকে _id বাদ দিতে হবে যেন মঙ্গোডিবি এরর না দেয়
+        delete updatedData._id;
+
+        const filter = {
+          _id: new ObjectId(id),
+        };
+
+        const updateDoc = {
+          $set: updatedData,
+        };
+
+        const result = await donationRequestCollection.updateOne(
+          filter,
+          updateDoc
+        );
+
+        if (result.matchedCount === 0) {
+          return res.status(404).send({
+            success: false,
+            message: "Donation request not found.",
+          });
+        }
+
+        res.send({
+          success: true,
+          message: "Donation request updated successfully.",
+          result,
+        });
       } catch (error) {
         console.error(error);
         res.status(500).send({
