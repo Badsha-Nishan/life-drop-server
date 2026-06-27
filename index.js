@@ -24,6 +24,8 @@ const client = new MongoClient(uri, {
   },
 });
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
+
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -32,6 +34,94 @@ async function run() {
     const database = client.db("lifedrop");
     const usersCollection = database.collection("users");
     const donationRequestCollection = database.collection("donation-request");
+
+    // ... আপনার বাকি কোড ও কালেকশনস ...
+    const fundingCollection = database.collection("funding");
+
+    // 💳 CREATE STRIPE CHECKOUT SESSION
+    app.post("/api/create-checkout-session", async (req, res) => {
+      try {
+        const { amount, userEmail, userName } = req.body;
+
+        if (!amount || amount <= 0) {
+          return res.status(400).send({ message: "Invalid donation amount" });
+        }
+
+        // স্ট্রাইপ সেশন তৈরি
+        const session = await stripe.checkout.sessions.create({
+          payment_method_types: ["card"],
+          line_items: [
+            {
+              price_data: {
+                currency: "usd",
+                product_data: {
+                  name: "LifeDrop Foundation - Blood Donation Funding",
+                  description: `Thank you, ${userName} for supporting our community.`,
+                },
+                unit_amount: amount * 100, // স্ট্রাইপ সেন্টস (Cents) হিসেবে হিসাব করে, তাই ১০০ দিয়ে গুণ
+              },
+              quantity: 1,
+            },
+          ],
+          mode: "payment",
+          // পেমেন্ট সফল বা ক্যানসেল হলে ফ্রন্টএন্ডের কোন পেজে ব্যাক করবে
+          success_url: `${process.env.CLIENT_URL}/funding?success=true&amount=${amount}`,
+          cancel_url: `${process.env.CLIENT_URL}/funding?canceled=true`,
+          metadata: {
+            userEmail,
+            userName,
+          },
+        });
+
+        res.send({ id: session.id, url: session.url });
+      } catch (error) {
+        console.error("Stripe Error:", error);
+        res.status(500).send({ message: error.message });
+      }
+    });
+
+    // 📊 FUNDING HISTORY API (সব ফান্ডিংয়ের লিস্ট দেখতে)
+    app.get("/api/funding-history", async (req, res) => {
+      try {
+        const history = await fundingCollection
+          .find()
+          .sort({ date: -1 })
+          .toArray();
+        res.send(history);
+      } catch (err) {
+        res.status(500).send({ message: "Error fetching funding history" });
+      }
+    });
+
+    // 🔍 SEARCH/FILTER BLOOD DONORS
+    app.get("/api/search-donors", async (req, res) => {
+      try {
+        const { bloodGroup, district, upazila } = req.query;
+
+        // মেইন কোয়েরি অবজেক্ট (শুধুমাত্র যাদের রোল 'donor' বা 'volunteer' তাদের খোঁজা হবে)
+        let query = {
+          role: { $in: ["donor", "volunteer"] },
+          status: "active", // ব্লকড ইউজারদের বাদ দেওয়া হলো
+        };
+
+        // ইউজার ফিল্টার সিলেক্ট করলে কোয়েরিতে যোগ হবে
+        if (bloodGroup && bloodGroup !== "Select Group") {
+          query.bloodGroup = bloodGroup;
+        }
+        if (district && district !== "Select District") {
+          query.district = district;
+        }
+        if (upazila && upazila !== "Select Upazila") {
+          query.upazila = upazila;
+        }
+
+        const donors = await usersCollection.find(query).toArray();
+        res.send(donors);
+      } catch (error) {
+        console.error("Error searching donors:", error);
+        res.status(500).send({ message: "Internal server error" });
+      }
+    });
 
     // Create Users Data
     app.post("/api/users", async (req, res) => {
