@@ -35,7 +35,7 @@ async function run() {
     const donationRequestCollection = database.collection("donation-request");
     const fundingCollection = database.collection("funding");
 
-    // 💳 CREATE STRIPE CHECKOUT SESSION
+    // 💳 CREATE STRIPE CHECKOUT SESSION (UPDATED)
     app.post("/api/create-checkout-session", async (req, res) => {
       try {
         const { amount, userEmail, userName } = req.body;
@@ -55,14 +55,15 @@ async function run() {
                   name: "LifeDrop Foundation - Blood Donation Funding",
                   description: `Thank you, ${userName} for supporting our community.`,
                 },
-                unit_amount: amount * 100, // স্ট্রাইপ সেন্টস (Cents) হিসেবে হিসাব করে, তাই ১০০ দিয়ে গুণ
+                unit_amount: amount * 100, // সেন্টস
               },
               quantity: 1,
             },
           ],
           mode: "payment",
-          // পেমেন্ট সফল বা ক্যানসেল হলে ফ্রন্টএন্ডের কোন পেজে ব্যাক করবে
-          success_url: `${process.env.CLIENT_URL}/funding?success=true&amount=${amount}`,
+
+          // ✨ ফিক্স: এখানে session_id={CHECKOUT_SESSION_ID} যুক্ত করা হয়েছে যেন ফ্রন্টএন্ড সেশন আইডি পায়
+          success_url: `${process.env.CLIENT_URL}/funding?success=true&amount=${amount}&session_id={CHECKOUT_SESSION_ID}`,
           cancel_url: `${process.env.CLIENT_URL}/funding?canceled=true`,
           metadata: {
             userEmail,
@@ -117,6 +118,57 @@ async function run() {
       } catch (error) {
         console.error("Error searching donors:", error);
         res.status(500).send({ message: "Internal server error" });
+      }
+    });
+
+    // 💾 ২. সফল পেমেন্টের ডাটা ডাটাবেজে সেভ করার এপিআই (FIXED)
+    app.post("/api/save-funding", async (req, res) => {
+      try {
+        const { userName, userEmail, amount, sessionId } = req.body;
+
+        if (!sessionId) {
+          return res.status(400).send({ message: "Session ID is required" });
+        }
+
+        // স্ট্রাইপ থেকে পেমেন্ট কনফার্মেশন ও আসল Payment Intent ID তুলে আনা
+        const session = await stripe.checkout.sessions.retrieve(sessionId);
+
+        if (session.payment_status !== "paid") {
+          return res
+            .status(400)
+            .send({ message: "Payment was not verified by Stripe." });
+        }
+
+        // ✨ ফিক্স: আসল payment_intent আইডি দিয়ে ডুপ্লিকেট এন্ট্রি চেক করা হচ্ছে
+        const existingPayment = await fundingCollection.findOne({
+          paymentIntentId: session.payment_intent,
+        });
+
+        if (existingPayment) {
+          return res
+            .status(400)
+            .send({ message: "This transaction has already been recorded." });
+        }
+
+        // ডাটাবেজের জন্য অবজেক্ট রেডি করা
+        const newFunding = {
+          userName,
+          userEmail,
+          amount: Number(amount),
+          paymentIntentId: session.payment_intent, // স্ট্রাইপের অরিজিনাল পেমেন্ট ইনটেন্ট আইডি (pi_...)
+          fundingDate: new Date(),
+        };
+
+        const result = await fundingCollection.insertOne(newFunding);
+
+        res.status(201).send({
+          success: true,
+          insertedId: result.insertedId,
+          data: newFunding,
+        });
+      } catch (error) {
+        console.error("Save Funding Error:", error);
+        res.status(500).send({ message: error.message });
       }
     });
 
@@ -299,23 +351,30 @@ async function run() {
       }
     });
 
-    // ─── ADMIN STATS API ───
+    // ─── ADMIN STATS API (DYNAMIC UPDATED)
     app.get("/api/admin/stats", async (req, res) => {
       try {
-        // ১. টোটাল ডোনার সংখ্যা কাউন্ট (যাদের রোল donor অথবা সব ইউজারকে কাউন্ট করতে পারেন)
         const totalDonors = await usersCollection.countDocuments({
           role: "donor",
         });
-        // যদি রোল না থাকে, সব ইউজার গুনতে চাইলে: await usersCollection.countDocuments({});
-
-        // ২. টোটাল ব্লাড রিকোয়েস্ট সংখ্যা কাউন্ট
         const bloodRequests = await donationRequestCollection.countDocuments(
           {}
         );
 
-        // ৩. টোটাল ফান্ডিং (আপাতত হার্ডকোডেড রাখতে পারেন যদি ফান্ডিং কালেকশন না থাকে)
-        // যদি কালেকশন থাকে: const fundingData = await fundingCollection.aggregate([...])
-        const totalFunding = 12886;
+        // 📊 ডাটাবেজের কালেকশন থেকে রিয়েল-টাইম টোটাল ফান্ডিং হিসাব করা
+        const fundingStats = await fundingCollection
+          .aggregate([
+            {
+              $group: {
+                _id: null,
+                total: { $sum: "$amount" },
+              },
+            },
+          ])
+          .toArray();
+
+        const totalFunding =
+          fundingStats.length > 0 ? fundingStats[0].total : 0;
 
         res.send({
           totalDonors,
