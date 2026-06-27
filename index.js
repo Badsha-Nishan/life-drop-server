@@ -4,6 +4,7 @@ const app = express();
 const port = 5000;
 require("dotenv").config();
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
 app.use(cors());
 app.use(express.json());
 
@@ -24,8 +25,6 @@ const client = new MongoClient(uri, {
   },
 });
 
-const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY);
-
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
@@ -34,8 +33,6 @@ async function run() {
     const database = client.db("lifedrop");
     const usersCollection = database.collection("users");
     const donationRequestCollection = database.collection("donation-request");
-
-    // ... আপনার বাকি কোড ও কালেকশনস ...
     const fundingCollection = database.collection("funding");
 
     // 💳 CREATE STRIPE CHECKOUT SESSION
