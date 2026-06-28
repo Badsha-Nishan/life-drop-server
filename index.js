@@ -172,6 +172,22 @@ async function run() {
       }
     });
 
+    // User update by admin
+    app.put("/api/users/update/:id", async (req, res) => {
+      try {
+        const id = req.params.id;
+        const updatedData = req.body; // এখানে { role: '...' } অথবা { status: '...' } আসবে
+        const filter = { _id: new ObjectId(id) };
+        const updateDoc = {
+          $set: updatedData,
+        };
+        const result = await usersCollection.updateOne(filter, updateDoc);
+        res.send(result);
+      } catch (error) {
+        res.status(500).send({ message: "Error updating user parameters" });
+      }
+    });
+
     // Create Users Data
     app.post("/api/users", async (req, res) => {
       try {
